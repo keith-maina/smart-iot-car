@@ -1,0 +1,232 @@
+{
+  "version": 1,
+  "author": "keith.bundi",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-hc-sr04",
+      "id": "ultra",
+      "top": -120,
+      "left": 150,
+      "attrs": {
+        "distance": "100"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "ledG",
+      "top": -100,
+      "left": -100,
+      "attrs": {
+        "color": "green"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "ledY",
+      "top": -100,
+      "left": -150,
+      "attrs": {
+        "color": "yellow"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "ledR",
+      "top": -100,
+      "left": -200,
+      "attrs": {
+        "color": "red"
+      }
+    },
+    {
+      "type": "wokwi-buzzer",
+      "id": "bz",
+      "top": 100,
+      "left": 250,
+      "attrs": {
+        "volume": "0.1"
+      }
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "servo",
+      "top": 180,
+      "left": 150,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-pir-motion-sensor",
+      "id": "pir",
+      "top": -120,
+      "left": 300,
+      "attrs": {}
+    }
+  ],
+  "connections": [
+    [
+      "esp:TX",
+      "$serialMonitor:RX",
+      "",
+      []
+    ],
+    [
+      "esp:RX",
+      "$serialMonitor:TX",
+      "",
+      []
+    ],
+    [
+      "ultra:VCC",
+      "esp:5V",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ultra:GND",
+      "esp:GND.2",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ultra:TRIG",
+      "esp:5",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ultra:ECHO",
+      "esp:18",
+      "blue",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ledG:A",
+      "esp:25",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ledG:C",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ledY:A",
+      "esp:26",
+      "yellow",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ledY:C",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ledR:A",
+      "esp:27",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "ledR:C",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "bz:1",
+      "esp:GND.2",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "bz:2",
+      "esp:14",
+      "orange",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "servo:GND",
+      "esp:GND.2",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "servo:V+",
+      "esp:5V",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "servo:PWM",
+      "esp:13",
+      "purple",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "pir:VCC",
+      "esp:5V",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "pir:GND",
+      "esp:GND.2",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "pir:OUT",
+      "esp:19",
+      "cyan",
+      [
+        "v0"
+      ]
+    ]
+  ],
+  "dependencies": {}
+}

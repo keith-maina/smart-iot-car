@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Car Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+  *{box-sizing:border-box;font-family:system-ui,sans-serif}
+  body{margin:0;background:#0f172a;color:#e2e8f0;display:flex;justify-content:center;padding:20px}
+  .card{background:#1e293b;border-radius:14px;padding:20px;width:100%;max-width:520px;margin-bottom:14px}
+  h1,h2{margin:0 0 12px}
+  input,button{width:100%;padding:12px;border-radius:8px;border:0;margin-bottom:10px;font-size:16px}
+  input{background:#0f172a;color:#e2e8f0;border:1px solid #334155}
+  button{background:#3b82f6;color:#fff;cursor:pointer}
+  button.red{background:#ef4444} button.green{background:#22c55e}
+  .row{display:flex;gap:10px}
+  .big{font-size:54px;font-weight:700;text-align:center}
+  .state{text-align:center;font-size:24px;font-weight:700;padding:10px;border-radius:8px}
+  .GO{background:#16a34a}.SLOW{background:#ca8a04}.STOP{background:#dc2626}.NONE{background:#475569}
+  canvas{width:100%;height:140px;background:#0f172a;border-radius:8px}
+  small{color:#94a3b8}
+  #err{color:#f87171;min-height:20px}
+</style>
+</head>
+<body>
+<div style="width:100%;max-width:520px">
+
+  <!-- LOGIN -->
+  <div id="login" class="card">
+    <h1>Smart Car Login</h1>
+    <input id="user" placeholder="Username">
+    <input id="pass" type="password" placeholder="Password">
+    <div id="err"></div>
+    <button onclick="doLogin()">Log in</button>
+    <small>Demo accounts: admin / 1234 (can control) and guest / guest (view only)</small>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="app" style="display:none">
+    <div class="card">
+      <h2>Car status <small id="who"></small></h2>
+      <div class="big"><span id="dist">--</span> cm</div>
+      <div id="state" class="state NONE">WAITING...</div>
+      <div id="person" style="text-align:center;margin:10px 0">Person: --</div>
+      <small id="conn">Connecting to broker...</small>
+    </div>
+    <div class="card">
+      <h2>Distance history</h2>
+      <canvas id="chart" width="480" height="140"></canvas>
+    </div>
+    <div class="card" id="controls">
+      <h2>Remote control</h2>
+      <div class="row">
+        <button class="red" onclick="send('stop')">STOP</button>
+        <button class="green" onclick="send('go')">GO</button>
+      </div>
+    </div>
+    <button onclick="logout()">Log out</button>
+  </div>
+</div>
+
+<script>
+// ---- MUST match the topics in your ESP32 sketch ----
+const TOPIC_DIST  = "keith/car/distance";
+const TOPIC_STATE = "keith/car/state";
+const TOPIC_PERSON = "keith/car/person";
+const TOPIC_CMD   = "keith/car/cmd";
+
+// Demo users (client-side only: NOT real security)
+const USERS = { admin: {pass:"1234", role:"admin"}, guest: {pass:"guest", role:"viewer"} };
+
+let client = null, role = null, history = [];
+
+function doLogin(){
+  const u = document.getElementById('user').value.trim();
+  const p = document.getElementById('pass').value;
+  if(USERS[u] && USERS[u].pass === p){
+    role = USERS[u].role;
+    document.getElementById('login').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('who').textContent = '(' + u + ')';
+    document.getElementById('controls').style.display = role === 'admin' ? 'block' : 'none';
+    startMqtt();
+  } else {
+    document.getElementById('err').textContent = 'Wrong username or password';
+  }
+}
+
+function logout(){ if(client) client.end(); location.reload(); }
+
+function startMqtt(){
+  // Browsers use WebSockets: HiveMQ public broker, secure port 8884
+  client = mqtt.connect("wss://broker.hivemq.com:8884/mqtt");
+  client.on('connect', () => {
+    document.getElementById('conn').textContent = 'Connected to broker';
+    client.subscribe([TOPIC_DIST, TOPIC_STATE, TOPIC_PERSON]);
+  });
+  client.on('error', e => document.getElementById('conn').textContent = 'Error: ' + e.message);
+  client.on('message', (topic, msg) => {
+    const text = msg.toString();
+    if(topic === TOPIC_DIST){
+      document.getElementById('dist').textContent = text;
+      history.push(parseFloat(text)); if(history.length > 40) history.shift();
+      drawChart();
+    } else if(topic === TOPIC_PERSON){
+      document.getElementById('person').textContent = text === '1' ? '🚶 Person detected' : 'No person nearby';
+    } else if(topic === TOPIC_STATE){
+      const el = document.getElementById('state');
+      el.textContent = text; el.className = 'state ' + text;
+    }
+  });
+}
+
+function send(cmd){
+  if(role !== 'admin'){ alert('View-only account'); return; }
+  client.publish(TOPIC_CMD, cmd);
+}
+
+function drawChart(){
+  const c = document.getElementById('chart'), g = c.getContext('2d');
+  g.clearRect(0,0,c.width,c.height);
+  g.strokeStyle = '#3b82f6'; g.lineWidth = 2; g.beginPath();
+  history.forEach((v,i) => {
+    const x = i * c.width / 39, y = c.height - Math.min(v,200) / 200 * c.height;
+    i ? g.lineTo(x,y) : g.moveTo(x,y);
+  });
+  g.stroke();
+}
+</script>
+</body>
+</html>

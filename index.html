@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Car Control Center</title>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+:root{--bg:#0b1220;--card:#162033;--line:#26344d;--txt:#e6edf7;--mut:#8ea0ba;--go:#16a34a;--slow:#d49a06;--stop:#dc2626;--acc:#3b82f6}
+*{box-sizing:border-box;font-family:system-ui,Segoe UI,sans-serif}
+body{margin:0;background:var(--bg);color:var(--txt)}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line)}
+header h1{font-size:20px;margin:0}
+.badge{display:inline-block;padding:4px 10px;border-radius:99px;font-size:12px;background:#334155;margin-right:6px}
+main{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px;padding:16px;max-width:1100px;margin:auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+.card h2{margin:0 0 12px;font-size:16px;color:var(--mut)}
+.wide{grid-column:1/-1}
+button{padding:10px 16px;border:0;border-radius:8px;background:var(--acc);color:#fff;font-size:15px;cursor:pointer}
+button.sec{background:#334155}button.red{background:var(--stop)}button.green{background:var(--go)}
+button:disabled,input:disabled{opacity:.4;cursor:not-allowed}
+input[type=text],input[type=password],input[type=number]{width:100%;padding:11px;margin:6px 0;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:15px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.big{font-size:64px;font-weight:700;text-align:center;line-height:1}
+.big small{font-size:20px;color:var(--mut)}
+.state{margin-top:12px;text-align:center;font-size:24px;font-weight:700;padding:12px;border-radius:10px;background:#475569}
+.state.GO{background:var(--go)}.state.SLOW{background:var(--slow)}.state.STOP{background:var(--stop)}
+.road{position:relative;height:90px;background:#1f2a40;border-radius:10px;overflow:hidden;border-bottom:4px dashed #475569}
+.road span{position:absolute;top:22px;font-size:42px;transition:left .4s}
+#car{left:3%}#obs{left:50%}
+input[type=range]{width:100%;margin:10px 0}
+.stats{display:flex;justify-content:space-around;text-align:center}
+.stats b{display:block;font-size:24px}.stats small{color:var(--mut)}
+canvas{width:100%;height:170px;background:var(--bg);border-radius:8px}
+ul{list-style:none;padding:0;margin:0;max-height:170px;overflow:auto;font-size:14px;color:var(--mut)}
+li{padding:5px 0;border-bottom:1px solid var(--line)}
+dialog{background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:16px;padding:24px;width:92%;max-width:420px}
+dialog::backdrop{background:rgba(0,0,0,.65);backdrop-filter:blur(4px)}
+dialog h3{margin-top:0}dialog p,dialog li{color:var(--txt);line-height:1.5}
+.err{color:#f87171;min-height:20px;font-size:14px}
+label{cursor:pointer}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🚗 Smart Car Control Center</h1>
+  <div>
+    <span class="badge" id="b1">Not connected</span><span class="badge" id="b2">Car offline</span>
+    <span class="badge" id="who"></span>
+    <button class="sec" onclick="dSettings.showModal()">⚙ Settings</button>
+    <button class="sec" onclick="dHelp.showModal()">? Help</button>
+    <button class="sec" onclick="location.reload()">Log out</button>
+  </div>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Live status</h2>
+    <div class="big"><span id="dist">--</span> <small>cm</small></div>
+    <div class="state" id="state">WAITING FOR CAR...</div>
+    <p style="text-align:center;color:var(--mut);margin:10px 0 0" id="pstat">No person data yet</p>
+  </div>
+
+  <div class="card">
+    <h2>Road view</h2>
+    <div class="road"><span id="car">🚗</span><span id="obs">🧱</span></div>
+    <div class="stats" style="margin-top:14px">
+      <div><b id="sStops">0</b><small>STOP events</small></div>
+      <div><b id="sClose">--</b><small>Closest (cm)</small></div>
+      <div><b id="sN">0</b><small>Readings</small></div>
+    </div>
+  </div>
+
+  <div class="card wide">
+    <h2>Control the simulation</h2>
+    <label><input type="checkbox" id="mode" class="ctl"> Control distance from this dashboard (instead of the Wokwi sensor)</label>
+    <div class="row" style="margin-top:6px">
+      <input type="range" id="sl" min="5" max="200" value="100" class="ctl" style="flex:1;min-width:220px">
+      <b id="sv" style="min-width:70px">100 cm</b>
+    </div>
+    <label><input type="checkbox" id="per" class="ctl"> Simulate a person nearby</label>
+    <div class="row" style="margin-top:12px">
+      <button class="red ctl" id="bStop">STOP car</button>
+      <button class="green ctl" id="bGo">GO</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Distance history</h2>
+    <canvas id="ch" width="480" height="170"></canvas>
+    <small style="color:var(--mut)">Red line = stop distance, yellow line = slow distance</small>
+  </div>
+
+  <div class="card">
+    <h2>Event log</h2>
+    <ul id="log"></ul>
+  </div>
+</main>
+
+<!-- ============ DIALOG BOXES ============ -->
+<dialog id="dLogin">
+  <h3>🔐 Smart Car Login</h3>
+  <input type="text" id="u" placeholder="Username">
+  <input type="password" id="p" placeholder="Password">
+  <div class="err" id="lerr"></div>
+  <button onclick="login()" style="width:100%">Log in</button>
+  <p style="font-size:13px;color:var(--mut)">admin / 1234 (full control) &nbsp;|&nbsp; guest / guest (view only)</p>
+</dialog>
+
+<dialog id="dWelcome">
+  <h3>👋 Welcome!</h3>
+  <p>Quick tour:</p>
+  <ul style="max-height:none">
+    <li>1. Turn on <b>Control distance from this dashboard</b>, then move the slider to move the obstacle.</li>
+    <li>2. Watch the car turn <b>GO</b>, <b>SLOW</b> or <b>STOP</b>, and the LEDs change in Wokwi.</li>
+    <li>3. Use <b>Settings</b> to change the stop and slow distances.</li>
+  </ul>
+  <button onclick="dWelcome.close()" style="width:100%;margin-top:14px">Start</button>
+</dialog>
+
+<dialog id="dConfirm">
+  <h3>Are you sure?</h3>
+  <p id="cmsg"></p>
+  <div class="row"><button id="cyes">Yes, send</button><button class="sec" id="cno">Cancel</button></div>
+</dialog>
+
+<dialog id="dAlert">
+  <h3 style="color:#f87171">⚠ Warning</h3>
+  <p id="amsg"></p>
+  <button onclick="dAlert.close()" style="width:100%">OK</button>
+</dialog>
+
+<dialog id="dSettings">
+  <h3>⚙ Car settings</h3>
+  <label>Stop distance (cm)<input type="number" id="sstop" value="20" class="ctl"></label>
+  <label>Slow distance (cm)<input type="number" id="sslow" value="50" class="ctl"></label>
+  <p style="font-size:13px;color:var(--mut)">When a person is detected, both distances are doubled so the car is more careful.</p>
+  <div class="err" id="serr"></div>
+  <div class="row"><button id="sapply" class="ctl">Apply</button><button class="sec" onclick="dSettings.close()">Close</button></div>
+</dialog>
+
+<dialog id="dHelp">
+  <h3>How this works</h3>
+  <p>The ESP32 car sends its distance and state over WiFi using MQTT. This page listens, shows it live, and sends commands back.</p>
+  <ul style="max-height:none">
+    <li>🟢 GO: path is clear</li><li>🟡 SLOW: obstacle getting close</li><li>🔴 STOP: obstacle too close</li>
+  </ul>
+  <button onclick="dHelp.close()" style="width:100%;margin-top:12px">Got it</button>
+</dialog>
+
+<script>
+const P = "keith/car/";   // must match the topics in the ESP32 sketch
+const USERS = { admin:{p:"1234",r:"admin"}, guest:{p:"guest",r:"viewer"} };
+const $ = id => document.getElementById(id);
+let cl, role, hist = [], last = "", lastAlert = 0, lastMsg = 0, sim = false;
+let cur = 100, personNow = false, stops = 0, n = 0, closest = Infinity, stopCm = 20, slowCm = 50, tmr = 0, cb = null;
+
+dLogin.addEventListener("cancel", e => e.preventDefault());
+dLogin.showModal();
+$("p").addEventListener("keydown", e => { if (e.key === "Enter") login(); });
+
+function login(){
+  const u = $("u").value.trim(), p = $("p").value;
+  if (USERS[u] && USERS[u].p === p) {
+    role = USERS[u].r; dLogin.close();
+    $("who").textContent = u + (role === "admin" ? " (admin)" : " (view only)");
+    document.querySelectorAll(".ctl").forEach(e => e.disabled = role !== "admin");
+    applyUi(); dWelcome.showModal(); startMqtt();
+  } else $("lerr").textContent = "Wrong username or password";
+}
+
+function applyUi(){
+  const adm = role === "admin";
+  $("sl").disabled = !(adm && sim);
+  $("per").disabled = !(adm && sim);
+}
+
+function pub(t, m){ if (role === "admin" && cl && cl.connected) cl.publish(P + t, String(m)); }
+
+function badge(id, text, col){ const b = $(id); b.textContent = text; b.style.background = col; }
+
+function startMqtt(){
+  cl = mqtt.connect("wss://broker.hivemq.com:8884/mqtt");
+  cl.on("connect", () => { badge("b1", "Broker connected", "#16a34a"); cl.subscribe([P+"distance", P+"state", P+"person"]); });
+  cl.on("reconnect", () => badge("b1", "Reconnecting...", "#d49a06"));
+  cl.on("close", () => badge("b1", "Disconnected", "#dc2626"));
+  cl.on("message", onMsg);
+  setInterval(() => {
+    const on = Date.now() - lastMsg < 4000;
+    badge("b2", on ? "Car online" : "Car offline", on ? "#16a34a" : "#475569");
+  }, 1500);
+}
+
+function onMsg(t, m){
+  const v = m.toString(); lastMsg = Date.now();
+  if (t === P + "distance") {
+    cur = parseFloat(v); $("dist").textContent = cur.toFixed(0);
+    hist.push(cur); if (hist.length > 60) hist.shift();
+    n++; if (cur < closest) closest = cur;
+    $("sN").textContent = n; $("sClose").textContent = closest.toFixed(0);
+    draw(); road();
+  } else if (t === P + "person") {
+    personNow = v === "1"; $("pstat").textContent = personNow ? "🚶 Person detected" : "No person nearby"; road();
+  } else if (t === P + "state") setState(v);
+}
+
+function setState(v){
+  const el = $("state"); el.textContent = v; el.className = "state " + v;
+  if (v !== last) {
+    log("Car state: " + v + " at " + cur.toFixed(0) + " cm");
+    if (v === "STOP") { stops++; $("sStops").textContent = stops; alertStop(); }
+    last = v;
+  }
+}
+
+function alertStop(){
+  if (Date.now() - lastAlert < 8000 || dAlert.open) return;
+  lastAlert = Date.now();
+  $("amsg").textContent = "Obstacle at " + cur.toFixed(0) + " cm. The car has stopped.";
+  dAlert.showModal();
+}
+
+function road(){
+  $("obs").style.left = (14 + Math.min(cur, 200) / 200 * 76) + "%";
+  $("obs").textContent = personNow ? "🚶" : "🧱";
+}
+
+function draw(){
+  const c = $("ch"), g = c.getContext("2d"), W = c.width, H = c.height;
+  g.clearRect(0, 0, W, H);
+  const y = v => H - Math.min(v, 200) / 200 * H;
+  [[stopCm, "#dc2626"], [slowCm, "#d49a06"]].forEach(([v, col]) => {
+    g.strokeStyle = col; g.setLineDash([5, 5]); g.beginPath(); g.moveTo(0, y(v)); g.lineTo(W, y(v)); g.stroke();
+  });
+  g.setLineDash([]); g.strokeStyle = "#3b82f6"; g.lineWidth = 2; g.beginPath();
+  hist.forEach((v, i) => { const x = i * W / 59; i ? g.lineTo(x, y(v)) : g.moveTo(x, y(v)); });
+  g.stroke();
+}
+
+function log(msg){
+  const li = document.createElement("li");
+  li.textContent = new Date().toLocaleTimeString() + "  " + msg;
+  $("log").prepend(li);
+  while ($("log").children.length > 30) $("log").lastChild.remove();
+}
+
+function ask(msg, fn){ $("cmsg").textContent = msg; cb = fn; dConfirm.showModal(); }
+$("cyes").onclick = () => { dConfirm.close(); if (cb) cb(); };
+$("cno").onclick = () => dConfirm.close();
+
+$("bStop").onclick = () => ask("Send a STOP command to the car?", () => { pub("cmd", "stop"); log("Remote STOP sent"); });
+$("bGo").onclick = () => ask("Release the car and let it go?", () => { pub("cmd", "go"); log("Remote GO sent"); });
+
+$("mode").onchange = e => {
+  sim = e.target.checked; pub("mode", sim ? "sim" : "sensor");
+  if (sim) { pub("setdist", $("sl").value); pub("setperson", $("per").checked ? "1" : "0"); }
+  log(sim ? "Dashboard now controls the distance" : "Wokwi sensor controls the distance");
+  applyUi();
+};
+
+$("sl").oninput = () => {
+  $("sv").textContent = $("sl").value + " cm";
+  clearTimeout(tmr); tmr = setTimeout(() => pub("setdist", $("sl").value), 120);
+};
+
+$("per").onchange = e => { pub("setperson", e.target.checked ? "1" : "0"); log(e.target.checked ? "Person added" : "Person removed"); };
+
+$("sapply").onclick = () => {
+  const a = +$("sstop").value, b = +$("sslow").value;
+  if (!(a > 0 && b > a)) { $("serr").textContent = "Slow distance must be bigger than stop distance"; return; }
+  $("serr").textContent = ""; stopCm = a; slowCm = b;
+  pub("config", a + "," + b); log("Settings changed: stop " + a + " cm, slow " + b + " cm");
+  dSettings.close(); draw();
+};
+</script>
+</body>
+</html>
